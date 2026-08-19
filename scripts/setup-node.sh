@@ -6,6 +6,9 @@
 
 set -e
 
+# Ensure full standard system PATH for root utilities (useradd, service, systemctl)
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
+
 # Default Options
 SERVICE_USER="dssh"
 SSH_PORT="22"
@@ -56,16 +59,19 @@ fi
 log_info "Initializing machine provisioning on $(hostname)..."
 
 # 1. Install Essential Dependencies
-log_info "Verifying base system utilities (curl, openssh-server, sudo)..."
+log_info "Verifying base system utilities (curl, openssh-server, sudo, passwd)..."
 if command -v apt-get &>/dev/null; then
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq && apt-get install -y -qq curl openssh-server sudo >/dev/null
+    apt-get update -qq 2>/dev/null || true
+    apt-get install -y -qq curl openssh-server sudo passwd adduser >/dev/null 2>&1 || apt-get install -y -qq curl openssh-server sudo >/dev/null 2>&1 || true
 elif command -v dnf &>/dev/null; then
-    dnf install -y -q curl openssh-server sudo >/dev/null
+    dnf install -y -q curl openssh-server sudo shadow-utils >/dev/null 2>&1 || true
 elif command -v yum &>/dev/null; then
-    yum install -y -q curl openssh-server sudo >/dev/null
+    yum install -y -q curl openssh-server sudo shadow-utils >/dev/null 2>&1 || true
 elif command -v pacman &>/dev/null; then
-    pacman -Sy --noconfirm curl openssh sudo >/dev/null
+    pacman -Sy --noconfirm curl openssh sudo shadow >/dev/null 2>&1 || true
+elif command -v apk &>/dev/null; then
+    apk add --no-cache curl openssh sudo shadow bash >/dev/null 2>&1 || true
 fi
 
 # 2. Create / Configure Dedicated Service User
@@ -73,7 +79,15 @@ if id "$SERVICE_USER" &>/dev/null; then
     log_info "User '$SERVICE_USER' already exists."
 else
     log_info "Creating dedicated cluster service user '$SERVICE_USER'..."
-    useradd -m -s /bin/bash "$SERVICE_USER"
+    if command -v useradd &>/dev/null; then
+        useradd -m -s /bin/bash "$SERVICE_USER" 2>/dev/null || useradd -m "$SERVICE_USER" 2>/dev/null || true
+    elif command -v adduser &>/dev/null; then
+        adduser --disabled-password --gecos "" --shell /bin/bash "$SERVICE_USER" 2>/dev/null || adduser -D -s /bin/bash "$SERVICE_USER" 2>/dev/null || true
+    elif [ -x /usr/sbin/useradd ]; then
+        /usr/sbin/useradd -m -s /bin/bash "$SERVICE_USER" 2>/dev/null || true
+    elif [ -x /sbin/useradd ]; then
+        /sbin/useradd -m -s /bin/bash "$SERVICE_USER" 2>/dev/null || true
+    fi
 fi
 
 # Passwordless Sudo for cluster management tasks
@@ -83,7 +97,12 @@ echo "$SERVICE_USER ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/99-dssh-orchestrat
 chmod 0440 "/etc/sudoers.d/99-dssh-orchestrator"
 
 # 3. Configure SSH Keys
-USER_HOME=$(eval echo "~$SERVICE_USER")
+USER_HOME=$(eval echo "~$SERVICE_USER" 2>/dev/null || echo "/home/$SERVICE_USER")
+if [ ! -d "$USER_HOME" ]; then
+    mkdir -p "$USER_HOME"
+    chown "$SERVICE_USER:$SERVICE_USER" "$USER_HOME" 2>/dev/null || true
+fi
+
 mkdir -p "$USER_HOME/.ssh"
 chmod 0700 "$USER_HOME/.ssh"
 touch "$USER_HOME/.ssh/authorized_keys"
@@ -106,7 +125,7 @@ if [ -n "$PUBLIC_KEY" ]; then
         echo "$PUBLIC_KEY" >> /root/.ssh/authorized_keys
     fi
 fi
-chown -R "$SERVICE_USER:$SERVICE_USER" "$USER_HOME/.ssh"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$USER_HOME/.ssh" 2>/dev/null || true
 
 # 4. SSH Daemon Keepalive & Hardening
 log_info "Configuring SSH keepalive and persistent daemon options..."
@@ -119,7 +138,7 @@ ClientAliveCountMax 6
 TCPKeepAlive yes
 EOF
 
-# Restart SSH service safely (supports both systemd and container/service environments)
+# Restart SSH service safely (supports systemd, SysV init, OpenRC, and container environments)
 if [ -d /run/systemd/system ] && command -v systemctl &>/dev/null; then
     if systemctl is-active --quiet sshd 2>/dev/null; then
         systemctl restart sshd 2>/dev/null || true
@@ -135,7 +154,7 @@ elif [ -x /usr/sbin/sshd ]; then
 fi
 
 # 5. Gather Machine Telemetry & Discovery
-PUBLIC_IP=$(curl -s4 https://ifconfig.me 2>/dev/null || curl -s4 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
+PUBLIC_IP=$(curl -s4 https://ifconfig.me 2>/dev/null || curl -s4 https://api.ipify.org 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
 HOST_NAME=$(hostname)
 ID_SLUG=$(echo "$HOST_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-_' '-')
 TAGS_JSON=$(echo "$MACHINE_TAGS" | awk -F',' '{for(i=1;i<=NF;i++) printf "\"%s\"%s", $i, (i==NF?"":", ")}')
