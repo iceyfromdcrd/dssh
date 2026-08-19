@@ -442,7 +442,7 @@ export class ComponentsV2Builder {
               type: ComponentType.TextDisplay,
               content: [
                 '## Add Machine',
-                'Run this on the target Linux machine to automatically configure SSH access:'
+                'Run this one-liner on your target Linux machine to automatically configure and connect it to your fleet:'
               ].join('\n')
             },
             {
@@ -457,9 +457,9 @@ export class ComponentsV2Builder {
                 oneLiner,
                 '```',
                 '',
-                'This creates a `dssh` service user, installs the cluster public key, and configures SSH keepalives.',
-                '',
-                'Once done, click **register manually** below to add the machine to the fleet.'
+                '• Automatically configures dedicated `dssh` service account & SSH keys.',
+                '• Automatically enrolls and appears live on your `/dash` immediately.',
+                '• No copy-pasting or manual setup required.'
               ].join('\n')
             },
             {
@@ -472,15 +472,15 @@ export class ComponentsV2Builder {
               components: [
                 {
                   type: ComponentType.Button,
-                  style: ButtonStyle.Success,
-                  label: 'register manually',
-                  custom_id: 'node_add_modal'
+                  style: ButtonStyle.Secondary,
+                  label: '◀ fleet dashboard',
+                  custom_id: 'dash_page:1'
                 },
                 {
                   type: ComponentType.Button,
                   style: ButtonStyle.Secondary,
-                  label: '◀ fleet dashboard',
-                  custom_id: 'dash_page:1'
+                  label: 'manual add (fallback)',
+                  custom_id: 'node_add_modal'
                 }
               ]
             }

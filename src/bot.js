@@ -7,7 +7,9 @@ import { InteractionRouter } from './interactions/router.js';
 import { DashHandler } from './interactions/handlers/dashHandler.js';
 import { SettingsHandler } from './interactions/handlers/settingsHandler.js';
 import { FleetMonitor } from './fleet/monitor.js';
+import { inventory } from './fleet/inventory.js';
 import { sshPool } from './ssh/pool.js';
+import { SSHExecutor } from './ssh/executor.js';
 import { KeyManager } from './fleet/keymanager.js';
 
 const client = new Client({
@@ -116,13 +118,19 @@ async function registerSlashCommands() {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
-  // Dynamic /setup endpoint: serves setup-node.sh with pre-injected cluster master public key
-  if (url.pathname === '/setup' || url.pathname === '/setup-node.sh') {
+  // Dynamic /setup endpoint: serves setup-node.sh with pre-injected cluster master public key and callback URL
+  if (req.method === 'GET' && (url.pathname === '/setup' || url.pathname === '/setup-node.sh')) {
     const scriptPath = path.join(config.scriptsDir, 'setup-node.sh');
     if (fs.existsSync(scriptPath)) {
       let scriptContent = fs.readFileSync(scriptPath, 'utf-8');
       const masterPubKey = KeyManager.getPublicKey();
+
+      const protocol = req.headers['x-forwarded-proto'] || 'http';
+      const host = req.headers['x-forwarded-host'] || req.headers.host || `localhost:${config.port}`;
+      const callbackUrl = config.publicUrl ? config.publicUrl.replace(/\/+$/, '') : `${protocol}://${host}`;
+
       scriptContent = scriptContent.replace('PUBLIC_KEY=""', `PUBLIC_KEY="${masterPubKey}"`);
+      scriptContent = scriptContent.replace('BOT_CALLBACK_URL=""', `BOT_CALLBACK_URL="${callbackUrl}"`);
 
       res.writeHead(200, {
         'Content-Type': 'text/x-shellscript; charset=utf-8',
@@ -130,6 +138,61 @@ const server = http.createServer((req, res) => {
       });
       return res.end(scriptContent);
     }
+  }
+
+  // Zero-Touch Self-Registration API endpoint
+  if (req.method === 'POST' && (url.pathname === '/api/register' || url.pathname === '/register')) {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body || '{}');
+        if (!data.hostname || !data.ip) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ success: false, error: 'Missing hostname or ip' }));
+        }
+
+        const machine = inventory.upsertNode({
+          hostname: data.hostname,
+          ip: data.ip,
+          port: parseInt(data.port || '22', 10),
+          username: data.username || 'dssh',
+          tags: Array.isArray(data.tags) ? data.tags : ['auto-enrolled'],
+          status: 'ONLINE',
+          metrics: { cpu: 0, ramUsed: 0, ramTotal: 0, uptime: 'just enrolled', latencyMs: 0 }
+        });
+
+        console.log(`[FLEET ENROLLMENT] Machine "${machine.hostname}" (${machine.ip}:${machine.port}) auto-enrolled!`);
+
+        // Asynchronously verify SSH telemetry
+        SSHExecutor.fetchTelemetry(machine).then(res => {
+          if (res.success) {
+            inventory.updateMetrics(machine.id, res.metrics, 'ONLINE');
+          } else {
+            inventory.setOffline(machine.id);
+          }
+        }).catch(() => {});
+
+        // Optional alert notification to Discord channel
+        if (config.alertChannelId && client.isReady()) {
+          try {
+            const channel = await client.channels.fetch(config.alertChannelId);
+            if (channel && channel.isTextBased()) {
+              channel.send({
+                content: `\`● [FLEET ENROLLED]: Machine "${machine.hostname}" (${machine.ip}:${machine.port}) is now live in the cluster dashboard.\``
+              }).catch(() => {});
+            }
+          } catch (_) {}
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: true, id: machine.id, message: 'Machine enrolled successfully' }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
   }
 
   // Health check endpoint for Render / Uptime monitors

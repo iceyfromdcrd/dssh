@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# DSSH Machine Provisioner
-# Automates persistent SSH access and key enrollment for fleet machines.
+# DSSH Machine Provisioner & Zero-Touch Fleet Auto-Enrollment
+# Automates persistent SSH access, key enrollment, and registers into the dashboard.
 # ==============================================================================
 
 set -e
@@ -10,6 +10,7 @@ set -e
 SERVICE_USER="dssh"
 SSH_PORT="22"
 PUBLIC_KEY=""
+BOT_CALLBACK_URL=""
 MACHINE_TAGS="prod,machine"
 
 # Colors for terminal output
@@ -27,6 +28,7 @@ log_err()   { echo -e "${RED}[DSSH ERR]${NC} $1"; }
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --key) PUBLIC_KEY="$2"; shift ;;
+        --url) BOT_CALLBACK_URL="$2"; shift ;;
         --user) SERVICE_USER="$2"; shift ;;
         --port) SSH_PORT="$2"; shift ;;
         --tags) MACHINE_TAGS="$2"; shift ;;
@@ -34,6 +36,7 @@ while [[ "$#" -gt 0 ]]; do
             echo "Usage: sudo bash setup-node.sh [options]"
             echo "Options:"
             echo "  --key '<ssh-ed25519 ...>'  Cluster master public key"
+            echo "  --url '<https://...>'      Bot callback URL for auto-enrollment"
             echo "  --user <username>          Service user (default: dssh)"
             echo "  --port <port>              SSH port (default: 22)"
             echo "  --tags <tag1,tag2>         Machine tags (default: prod,machine)"
@@ -129,6 +132,24 @@ HOST_NAME=$(hostname)
 ID_SLUG=$(echo "$HOST_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-_' '-')
 TAGS_JSON=$(echo "$MACHINE_TAGS" | awk -F',' '{for(i=1;i<=NF;i++) printf "\"%s\"%s", $i, (i==NF?"":", ")}')
 
+# 6. Automatic Self-Registration Callback to Bot
+ENROLLED_AUTOMATICALLY=false
+if [ -n "$BOT_CALLBACK_URL" ]; then
+    log_info "Auto-registering with fleet orchestrator at ${BOT_CALLBACK_URL}..."
+    REGISTER_PAYLOAD="{\"hostname\":\"${HOST_NAME}\",\"ip\":\"${PUBLIC_IP}\",\"port\":${SSH_PORT},\"username\":\"${SERVICE_USER}\",\"tags\":[${TAGS_JSON}]}"
+    
+    REGISTER_RES=$(curl -s -X POST "${BOT_CALLBACK_URL}/api/register" \
+        -H "Content-Type: application/json" \
+        -d "$REGISTER_PAYLOAD" 2>/dev/null || echo "")
+
+    if echo "$REGISTER_RES" | grep -q '"success":true'; then
+        ENROLLED_AUTOMATICALLY=true
+        log_ok "Machine successfully enrolled and live in your Discord dashboard!"
+    else
+        log_err "Auto-registration response: ${REGISTER_RES:-no response from server}"
+    fi
+fi
+
 echo ""
 echo -e "${GREEN}================================================================${NC}"
 echo -e "${GREEN}            DSSH MACHINE PROVISIONING COMPLETE                  ${NC}"
@@ -138,20 +159,10 @@ echo -e " Host / IP   : ${CYAN}${PUBLIC_IP}${NC}"
 echo -e " SSH User    : ${CYAN}${SERVICE_USER}${NC}"
 echo -e " Port        : ${CYAN}${SSH_PORT}${NC}"
 echo -e " Tags        : ${CYAN}${MACHINE_TAGS}${NC}"
-echo -e "${GREEN}----------------------------------------------------------------${NC}"
-echo -e " ${BLUE}To register this machine in your Discord bot, use the snippet below:${NC}"
-echo ""
-cat << EOF
-{
-  "id": "${ID_SLUG}",
-  "hostname": "${HOST_NAME}",
-  "ip": "${PUBLIC_IP}",
-  "port": ${SSH_PORT},
-  "username": "${SERVICE_USER}",
-  "tags": [${TAGS_JSON}],
-  "status": "ONLINE",
-  "metrics": { "cpu": 0, "ramUsed": 0, "ramTotal": 0, "uptime": "just registered", "latencyMs": 0 }
-}
-EOF
-echo ""
+if [ "$ENROLLED_AUTOMATICALLY" = true ]; then
+    echo -e " Status      : ${GREEN}● LIVE IN DISCORD DASHBOARD${NC}"
+else
+    echo -e " Status      : ${CYAN}Provisioned locally${NC}"
+fi
 echo -e "${GREEN}================================================================${NC}"
+echo ""
