@@ -1,0 +1,26 @@
+{
+  "name": "dssh-cluster-orchestrator",
+  "version": "1.0.0",
+  "description": "Production-grade Linux fleet orchestrator bot for Discord using Components V2",
+  "main": "src/bot.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node --watch src/bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.17.3",
+    "dotenv": "^16.4.7",
+    "ssh2": "^1.16.0"
+  },
+  "keywords": [
+    "discord",
+    "ssh",
+    "cluster",
+    "devops",
+    "components-v2",
+    "fleet-management"
+  ],
+  "author": "",
+  "license": "MIT"
+}

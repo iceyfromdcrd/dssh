@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# DSSH Machine Provisioner
+# Automates persistent SSH access and key enrollment for fleet machines.
+# ==============================================================================
+
+set -e
+
+# Default Options
+SERVICE_USER="dssh"
+SSH_PORT="22"
+PUBLIC_KEY=""
+MACHINE_TAGS="prod,machine"
+
+# Colors for terminal output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+log_info()  { echo -e "${CYAN}[DSSH INFO]${NC} $1"; }
+log_ok()    { echo -e "${GREEN}[DSSH OK]${NC} $1"; }
+log_err()   { echo -e "${RED}[DSSH ERR]${NC} $1"; }
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --key) PUBLIC_KEY="$2"; shift ;;
+        --user) SERVICE_USER="$2"; shift ;;
+        --port) SSH_PORT="$2"; shift ;;
+        --tags) MACHINE_TAGS="$2"; shift ;;
+        -h|--help)
+            echo "Usage: sudo bash setup-node.sh [options]"
+            echo "Options:"
+            echo "  --key '<ssh-ed25519 ...>'  Cluster master public key"
+            echo "  --user <username>          Service user (default: dssh)"
+            echo "  --port <port>              SSH port (default: 22)"
+            echo "  --tags <tag1,tag2>         Machine tags (default: prod,machine)"
+            exit 0
+            ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Ensure script is running as root
+if [ "$EUID" -ne 0 ]; then
+  log_err "Please run as root (sudo bash setup-node.sh)"
+  exit 1
+fi
+
+log_info "Initializing machine provisioning on $(hostname)..."
+
+# 1. Install Essential Dependencies
+log_info "Verifying base system utilities (curl, openssh-server, sudo)..."
+if command -v apt-get &>/dev/null; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq && apt-get install -y -qq curl openssh-server sudo >/dev/null
+elif command -v dnf &>/dev/null; then
+    dnf install -y -q curl openssh-server sudo >/dev/null
+elif command -v yum &>/dev/null; then
+    yum install -y -q curl openssh-server sudo >/dev/null
+elif command -v pacman &>/dev/null; then
+    pacman -Sy --noconfirm curl openssh sudo >/dev/null
+fi
+
+# 2. Create / Configure Dedicated Service User
+if id "$SERVICE_USER" &>/dev/null; then
+    log_info "User '$SERVICE_USER' already exists."
+else
+    log_info "Creating dedicated cluster service user '$SERVICE_USER'..."
+    useradd -m -s /bin/bash "$SERVICE_USER"
+fi
+
+# Passwordless Sudo for cluster management tasks
+log_info "Configuring sudo permissions for '$SERVICE_USER'..."
+mkdir -p /etc/sudoers.d
+echo "$SERVICE_USER ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/99-dssh-orchestrator"
+chmod 0440 "/etc/sudoers.d/99-dssh-orchestrator"
+
+# 3. Configure SSH Keys
+USER_HOME=$(eval echo "~$SERVICE_USER")
+mkdir -p "$USER_HOME/.ssh"
+chmod 0700 "$USER_HOME/.ssh"
+touch "$USER_HOME/.ssh/authorized_keys"
+chmod 0600 "$USER_HOME/.ssh/authorized_keys"
+
+if [ -n "$PUBLIC_KEY" ]; then
+    if ! grep -qF "$PUBLIC_KEY" "$USER_HOME/.ssh/authorized_keys"; then
+        echo "$PUBLIC_KEY" >> "$USER_HOME/.ssh/authorized_keys"
+        log_ok "Public key enrolled in $USER_HOME/.ssh/authorized_keys"
+    else
+        log_info "Public key already enrolled."
+    fi
+
+    # Also add to root for fallback
+    mkdir -p /root/.ssh
+    chmod 0700 /root/.ssh
+    touch /root/.ssh/authorized_keys
+    chmod 0600 /root/.ssh/authorized_keys
+    if ! grep -qF "$PUBLIC_KEY" /root/.ssh/authorized_keys; then
+        echo "$PUBLIC_KEY" >> /root/.ssh/authorized_keys
+    fi
+fi
+chown -R "$SERVICE_USER:$SERVICE_USER" "$USER_HOME/.ssh"
+
+# 4. SSH Daemon Keepalive & Hardening
+log_info "Configuring SSH keepalive and persistent daemon options..."
+mkdir -p /etc/ssh/sshd_config.d
+cat << 'EOF' > /etc/ssh/sshd_config.d/99-dssh-keepalive.conf
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys
+ClientAliveInterval 30
+ClientAliveCountMax 6
+TCPKeepAlive yes
+EOF
+
+# Restart SSH service safely
+if systemctl is-active --quiet sshd; then
+    systemctl restart sshd
+elif systemctl is-active --quiet ssh; then
+    systemctl restart ssh
+fi
+
+# 5. Gather Machine Telemetry & Discovery
+PUBLIC_IP=$(curl -s4 https://ifconfig.me 2>/dev/null || curl -s4 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')
+HOST_NAME=$(hostname)
+ID_SLUG=$(echo "$HOST_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-_' '-')
+TAGS_JSON=$(echo "$MACHINE_TAGS" | awk -F',' '{for(i=1;i<=NF;i++) printf "\"%s\"%s", $i, (i==NF?"":", ")}')
+
+echo ""
+echo -e "${GREEN}================================================================${NC}"
+echo -e "${GREEN}            DSSH MACHINE PROVISIONING COMPLETE                  ${NC}"
+echo -e "${GREEN}================================================================${NC}"
+echo -e " Hostname    : ${CYAN}${HOST_NAME}${NC}"
+echo -e " Host / IP   : ${CYAN}${PUBLIC_IP}${NC}"
+echo -e " SSH User    : ${CYAN}${SERVICE_USER}${NC}"
+echo -e " Port        : ${CYAN}${SSH_PORT}${NC}"
+echo -e " Tags        : ${CYAN}${MACHINE_TAGS}${NC}"
+echo -e "${GREEN}----------------------------------------------------------------${NC}"
+echo -e " ${BLUE}To register this machine in your Discord bot, use the snippet below:${NC}"
+echo ""
+cat << EOF
+{
+  "id": "${ID_SLUG}",
+  "hostname": "${HOST_NAME}",
+  "ip": "${PUBLIC_IP}",
+  "port": ${SSH_PORT},
+  "username": "${SERVICE_USER}",
+  "tags": [${TAGS_JSON}],
+  "status": "ONLINE",
+  "metrics": { "cpu": 0, "ramUsed": 0, "ramTotal": 0, "uptime": "just registered", "latencyMs": 0 }
+}
+EOF
+echo ""
+echo -e "${GREEN}================================================================${NC}"
