@@ -233,6 +233,19 @@ export class ComponentsV2Builder {
     const cpuBarFilled = Math.min(10, Math.max(0, Math.round(cpu / 10)));
     const cpuBar = '█'.repeat(cpuBarFilled) + '░'.repeat(10 - cpuBarFilled);
 
+    const telemetryContent = [
+      '### Telemetry & Resource Utilization',
+      `**CPU Load:** \`[ ${cpu}% ]\`  \`${cpuBar}\``,
+      `**Memory:**   \`[ ${ramU}GB / ${ramT}GB (${Math.round((ramU / (ramT || 1)) * 100)}%) ]\``,
+      `**Latency:**  \`[ ${lat}ms ]\``,
+      `**Uptime:**   \`${uptime}\``,
+      `**Tags:**     ${tags}`
+    ];
+
+    if (isOffline && machine.lastError) {
+      telemetryContent.push(`**Diagnostic:** \`${machine.lastError}\``);
+    }
+
     return {
       flags: IS_COMPONENTS_V2,
       components: [
@@ -253,14 +266,7 @@ export class ComponentsV2Builder {
             },
             {
               type: ComponentType.TextDisplay,
-              content: [
-                '### Telemetry & Resource Utilization',
-                `**CPU Load:** \`[ ${cpu}% ]\`  \`${cpuBar}\``,
-                `**Memory:**   \`[ ${ramU}GB / ${ramT}GB (${Math.round((ramU / (ramT || 1)) * 100)}%) ]\``,
-                `**Latency:**  \`[ ${lat}ms ]\``,
-                `**Uptime:**   \`${uptime}\``,
-                `**Tags:**     ${tags}`
-              ].join('\n')
+              content: telemetryContent.join('\n')
             },
             {
               type: ComponentType.Separator,

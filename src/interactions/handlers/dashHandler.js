@@ -47,7 +47,7 @@ export class DashHandler {
             }
             inventory.updateMetrics(m.id, res.metrics, status);
           } else {
-            inventory.setOffline(m.id);
+            inventory.setOffline(m.id, res.error);
           }
         })
       );

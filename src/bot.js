@@ -169,7 +169,7 @@ const server = http.createServer((req, res) => {
           if (res.success) {
             inventory.updateMetrics(machine.id, res.metrics, 'ONLINE');
           } else {
-            inventory.setOffline(machine.id);
+            inventory.setOffline(machine.id, res.error);
           }
         }).catch(() => {});
 

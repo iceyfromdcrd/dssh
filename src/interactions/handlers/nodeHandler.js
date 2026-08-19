@@ -48,7 +48,7 @@ export class NodeHandler {
         }
         inventory.updateMetrics(machine.id, res.metrics, status);
       } else {
-        inventory.setOffline(machine.id);
+        inventory.setOffline(machine.id, res.error);
       }
 
       const updated = inventory.getById(machineId);

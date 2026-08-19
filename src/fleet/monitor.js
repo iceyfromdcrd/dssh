@@ -55,8 +55,8 @@ export class FleetMonitor {
 
         if (!res.success) {
           // Machine failed to respond
+          inventory.setOffline(machine.id, res.error);
           if (prevState.status !== 'OFFLINE') {
-            inventory.setOffline(machine.id);
             this.previousStates.set(machine.id, { status: 'OFFLINE', cpu: 0 });
             await this.dispatchAlert(machine, 'OFFLINE', `SSH handshake failed or host unreachable: ${res.error}`);
           }

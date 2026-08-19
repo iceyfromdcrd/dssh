@@ -134,16 +134,18 @@ class InventoryManager {
     if (!node) return null;
     node.metrics = { ...node.metrics, ...metrics };
     node.status = status;
+    delete node.lastError;
     node.lastChecked = Date.now();
     this.save();
     return node;
   }
 
-  setOffline(id) {
+  setOffline(id, error = null) {
     const node = this.nodes.get(id);
     if (!node) return;
     node.status = 'OFFLINE';
-    node.metrics.latencyMs = 0;
+    if (error) node.lastError = error;
+    if (node.metrics) node.metrics.latencyMs = 0;
     node.lastChecked = Date.now();
     this.save();
   }
