@@ -1,6 +1,9 @@
+<<<<<<< HEAD
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+=======
+>>>>>>> 00855397e4cd6ae26a581a8125dfe37558279e0a
 import { Client, GatewayIntentBits, Events, REST, Routes, SlashCommandBuilder } from 'discord.js';
 import { config, isAuthorized } from './config.js';
 import { InteractionRouter } from './interactions/router.js';
@@ -112,6 +115,7 @@ async function registerSlashCommands() {
   }
 }
 
+<<<<<<< HEAD
 // 1. Lightweight HTTP Server for Webhooks, Health Checks (Render / UptimeRobot), and Script Serving
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -153,6 +157,8 @@ server.listen(config.port, '0.0.0.0', () => {
 });
 
 // 2. Discord Bot Lifecycle
+=======
+>>>>>>> 00855397e4cd6ae26a581a8125dfe37558279e0a
 client.once(Events.ClientReady, async () => {
   console.log(`\n======================================================`);
   console.log(`[DSSH ORCHESTRATOR] Logged in as ${client.user.tag}`);
@@ -197,8 +203,12 @@ client.on(Events.MessageCreate, async (message) => {
 
 // Graceful Cleanup
 const shutdown = () => {
+<<<<<<< HEAD
   console.log('\n[SHUTDOWN] Terminating server, SSH connections, and bot...');
   server.close();
+=======
+  console.log('\n[SHUTDOWN] Releasing SSH connections and terminating bot...');
+>>>>>>> 00855397e4cd6ae26a581a8125dfe37558279e0a
   if (fleetMonitor) fleetMonitor.stop();
   sshPool.destroyAll();
   client.destroy();
@@ -214,5 +224,9 @@ if (config.token) {
     console.error('[AUTH ERROR] Discord login failed:', err.message);
   });
 } else {
+<<<<<<< HEAD
   console.log('[INFO] Ready. Set DISCORD_TOKEN in .env or Render environment variables.');
+=======
+  console.log('[INFO] Server ready. Create a .env file with your DISCORD_TOKEN and run `npm start`.');
+>>>>>>> 00855397e4cd6ae26a581a8125dfe37558279e0a
 }

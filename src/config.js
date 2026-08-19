@@ -10,8 +10,11 @@ export const config = {
   token: process.env.DISCORD_TOKEN || '',
   clientId: process.env.CLIENT_ID || '',
   guildId: process.env.GUILD_ID || '',
+<<<<<<< HEAD
   port: parseInt(process.env.PORT || '3000', 10),
   publicUrl: process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || '',
+=======
+>>>>>>> 00855397e4cd6ae26a581a8125dfe37558279e0a
   
   // Whitelist: Array of authorized Discord User IDs
   authorizedUserIds: (process.env.AUTHORIZED_USER_IDS || '')
@@ -31,8 +34,12 @@ export const config = {
     ramThreshold: parseFloat(process.env.ALERT_RAM_THRESHOLD || '90')
   },
 
+<<<<<<< HEAD
   dataDir: path.resolve(__dirname, '../data'),
   scriptsDir: path.resolve(__dirname, '../scripts')
+=======
+  dataDir: path.resolve(__dirname, '../data')
+>>>>>>> 00855397e4cd6ae26a581a8125dfe37558279e0a
 };
 
 export function isAuthorized(userId) {
