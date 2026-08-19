@@ -425,18 +425,12 @@ export class ComponentsV2Builder {
    */
   static buildAddMachineView() {
     const pubKey = KeyManager.getPublicKey();
-<<<<<<< HEAD
     const baseUrl = config.publicUrl ? config.publicUrl.replace(/\/+$/, '') : '';
     const endpoint = baseUrl ? `${baseUrl}/setup` : 'https://raw.githubusercontent.com/your-org/dssh/main/scripts/setup-node.sh';
 
     const oneLiner = baseUrl
       ? `curl -sL "${endpoint}" | sudo bash`
       : `curl -sL "${endpoint}" | sudo bash -s -- --key "${pubKey}"`;
-=======
-
-    // Build a compact one-liner that creates the dssh user, installs the key, and configures SSH
-    const oneLiner = `curl -sL https://raw.githubusercontent.com/your-org/dssh/main/scripts/setup-node.sh | sudo bash -s -- --key "${pubKey}"`;
->>>>>>> 00855397e4cd6ae26a581a8125dfe37558279e0a
 
     return {
       flags: IS_COMPONENTS_V2,
