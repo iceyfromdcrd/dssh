@@ -456,7 +456,6 @@ export class ComponentsV2Builder {
                 '```bash',
                 oneLiner,
                 '```',
-                '',
                 '• Automatically configures dedicated `dssh` service account & SSH keys.',
                 '• Automatically enrolls and appears live on your `/dash` immediately.',
                 '• No copy-pasting or manual setup required.'

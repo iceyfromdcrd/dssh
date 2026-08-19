@@ -119,11 +119,19 @@ ClientAliveCountMax 6
 TCPKeepAlive yes
 EOF
 
-# Restart SSH service safely
-if systemctl is-active --quiet sshd; then
-    systemctl restart sshd
-elif systemctl is-active --quiet ssh; then
-    systemctl restart ssh
+# Restart SSH service safely (supports both systemd and container/service environments)
+if [ -d /run/systemd/system ] && command -v systemctl &>/dev/null; then
+    if systemctl is-active --quiet sshd 2>/dev/null; then
+        systemctl restart sshd 2>/dev/null || true
+    else
+        systemctl restart ssh 2>/dev/null || systemctl start ssh 2>/dev/null || true
+    fi
+elif command -v service &>/dev/null; then
+    service ssh restart 2>/dev/null || service sshd restart 2>/dev/null || service ssh start 2>/dev/null || true
+elif [ -x /etc/init.d/ssh ]; then
+    /etc/init.d/ssh restart 2>/dev/null || /etc/init.d/ssh start 2>/dev/null || true
+elif [ -x /usr/sbin/sshd ]; then
+    /usr/sbin/sshd 2>/dev/null || true
 fi
 
 # 5. Gather Machine Telemetry & Discovery
